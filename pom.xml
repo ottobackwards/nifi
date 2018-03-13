@@ -1636,7 +1636,8 @@
             <dependency>
                 <groupId>com.amazonaws</groupId>
                 <artifactId>aws-java-sdk</artifactId>
-                <version>1.11.68</version>
+                <!--<version>1.11.68</version>-->
+                <version>1.11.204</version>
             </dependency>
             <dependency>
                 <groupId>com.squareup.okhttp3</groupId>
