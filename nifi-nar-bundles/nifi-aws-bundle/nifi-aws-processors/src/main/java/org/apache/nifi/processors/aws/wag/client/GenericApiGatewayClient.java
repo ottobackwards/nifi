@@ -24,6 +24,10 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 
+// The classes in this package come from: https://github.com/rpgreen/apigateway-generic-java-sdk
+// It is apache lic.
+// I have moved it here because of version issues and problems with 1.4.0 extensions
+
 public class GenericApiGatewayClient extends AmazonWebServiceClient {
     private static final String API_GATEWAY_SERVICE_NAME = "execute-api";
     private static final String API_KEY_HEADER = "x-api-key";
