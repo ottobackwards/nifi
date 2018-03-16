@@ -40,12 +40,16 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.nifi.components.PropertyDescriptor;
 import org.apache.nifi.expression.AttributeExpression;
 import org.apache.nifi.flowfile.FlowFile;
+import org.apache.nifi.logging.ComponentLog;
 import org.apache.nifi.processor.ProcessContext;
+import org.apache.nifi.processor.ProcessSession;
+import org.apache.nifi.processor.Relationship;
 import org.apache.nifi.processor.util.StandardValidators;
 import org.apache.nifi.processors.aws.AbstractAWSCredentialsProviderProcessor;
 import org.apache.nifi.processors.aws.AbstractAWSProcessor;
 import org.apache.nifi.processors.aws.wag.client.GenericApiGatewayClient;
 import org.apache.nifi.processors.aws.wag.client.GenericApiGatewayClientBuilder;
+import org.apache.nifi.processors.aws.wag.client.GenericApiGatewayRequest;
 import org.apache.nifi.processors.aws.wag.client.GenericApiGatewayRequestBuilder;
 import org.apache.nifi.processors.aws.wag.client.GenericApiGatewayResponse;
 
@@ -61,7 +65,16 @@ public abstract class AbstractAWSGatewayApiProcessor extends AbstractAWSCredenti
     public final static String STATUS_CODE = "aws.gateway.api.status.code";
     public final static String STATUS_MESSAGE = "aws.gateway.api.status.message";
     public final static String RESOURCE_NAME_ATTR = "aws.gateway.api.resource";
+    public final static String ENDPOINT_ATTR = "aws.gateway.api.endpoint";
     public final static String TRANSACTION_ID = "aws.gateway.api.tx.id";
+    public final static String EXCEPTION_CLASS = "aws.gateway.api.java.exception.class";
+    public final static String EXCEPTION_MESSAGE = "aws.gateway.api.java.exception.message";
+
+    protected static final String REL_RESPONSE_NAME = "Response";
+    protected static final String REL_SUCCESS_REQ_NAME = "Original";
+    protected static final String REL_RETRY_NAME = "Retry";
+    protected static final String REL_NO_RETRY_NAME = "No Retry";
+    protected static final String REL_FAILURE_NAME = "Failure";
 
     public AbstractAWSGatewayApiProcessor(){}
 
@@ -118,6 +131,24 @@ public abstract class AbstractAWSGatewayApiProcessor extends AbstractAWSCredenti
         .addValidator(StandardValidators.REGULAR_EXPRESSION_VALIDATOR)
         .build();
 
+    public static final PropertyDescriptor PROP_OUTPUT_RESPONSE_REGARDLESS = new PropertyDescriptor.Builder()
+        .name("Always Output Response")
+        .description("Will force a response FlowFile to be generated and routed to the 'Response' relationship regardless of what the server status code received is "
+                         + "or if the processor is configured to put the server response body in the request attribute. In the later configuration a request FlowFile with the "
+                         + "response body in the attribute and a typical response FlowFile will be emitted to their respective relationships.")
+        .required(false)
+        .defaultValue("false")
+        .allowableValues("true", "false")
+        .build();
+
+    public static final PropertyDescriptor PROP_PENALIZE_NO_RETRY = new PropertyDescriptor.Builder()
+        .name("Penalize on \"No Retry\"")
+        .description("Enabling this property will penalize FlowFiles that are routed to the \"No Retry\" relationship.")
+        .required(false)
+        .defaultValue("false")
+        .allowableValues("true", "false")
+        .build();
+
     @Override
     protected PropertyDescriptor getSupportedDynamicPropertyDescriptor(String propertyDescriptorName) {
         return new PropertyDescriptor.Builder()
@@ -129,6 +160,7 @@ public abstract class AbstractAWSGatewayApiProcessor extends AbstractAWSCredenti
             .expressionLanguageSupported(true)
             .build();
     }
+
 
     @Override
     public void onPropertyModified(final PropertyDescriptor descriptor, final String oldValue, final String newValue) {
@@ -240,5 +272,85 @@ public abstract class AbstractAWSGatewayApiProcessor extends AbstractAWSCredenti
         });
 
         return map;
+    }
+
+
+    private Relationship getRelationShipForName(String name, Set<Relationship> relationships) {
+        for (Relationship relationship : relationships) {
+            if(relationship.getName().equals(name)) {
+                return relationship;
+            }
+        }
+        throw new IllegalStateException("Unknown relationship " + name);
+    }
+
+    protected void route(FlowFile request, FlowFile response, ProcessSession session, ProcessContext context, int statusCode, Set<Relationship> relationships){
+        // check if we should yield the processor
+        if (!isSuccess(statusCode) && request == null) {
+            context.yield();
+        }
+
+        // If the property to output the response flowfile regardless of status code is set then transfer it
+        boolean responseSent = false;
+        if (context.getProperty(PROP_OUTPUT_RESPONSE_REGARDLESS).asBoolean()) {
+            session.transfer(response, getRelationShipForName(REL_RESPONSE_NAME, relationships));
+            responseSent = true;
+        }
+
+        // transfer to the correct relationship
+        // 2xx -> SUCCESS
+        if (isSuccess(statusCode)) {
+            // we have two flowfiles to transfer
+            if (request != null) {
+                session.transfer(request, getRelationShipForName(REL_SUCCESS_REQ_NAME, relationships));
+            }
+            if (response != null && !responseSent) {
+                session.transfer(response, getRelationShipForName(REL_RESPONSE_NAME, relationships));
+            }
+
+            // 5xx -> RETRY
+        } else if (statusCode / 100 == 5) {
+            if (request != null) {
+                request = session.penalize(request);
+                session.transfer(request, getRelationShipForName(REL_RETRY_NAME, relationships));
+            }
+
+            // 1xx, 3xx, 4xx -> NO RETRY
+        } else {
+            if (request != null) {
+                if (context.getProperty(PROP_PENALIZE_NO_RETRY).asBoolean()) {
+                    request = session.penalize(request);
+                }
+                session.transfer(request, getRelationShipForName(REL_NO_RETRY_NAME, relationships));
+            }
+        }
+
+    }
+
+    protected boolean isSuccess(int statusCode) {
+        return statusCode / 100 == 2;
+    }
+
+    protected void logRequest(ComponentLog logger, GenericApiGatewayRequest request) {
+        logger.debug("\nRequest to remote service:\n\t{}{}\n{}",
+                     new Object[]{request.getHttpMethod(), request.getResourcePath(), getLogString(request.getHeaders())});
+    }
+
+    protected void logResponse(ComponentLog logger, URL url, GenericApiGatewayResponse response) {
+        logger.debug("\nResponse from remote service:\n\t{}\n{}",
+                     new Object[]{url.toExternalForm(), getLogString(response.getHttpResponse().getHeaders())});
+    }
+
+    private String getLogString(Map<String, String> map) {
+        StringBuilder sb = new StringBuilder();
+        for (Map.Entry<String, String> entry : map.entrySet()) {
+            String value = entry.getValue();
+            sb.append("\t");
+            sb.append(entry.getKey());
+            sb.append(": ");
+            sb.append(value);
+            sb.append("\n");
+        }
+        return sb.toString();
     }
 }
