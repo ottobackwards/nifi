@@ -1,6 +1,8 @@
 package org.apache.nifi.processors.aws.wag;
 
 import static org.mockito.Matchers.any;
+import static org.mockito.Matchers.argThat;
+import static org.mockito.Mockito.times;
 
 import com.amazonaws.ClientConfiguration;
 import com.amazonaws.http.AmazonHttpClient;
@@ -38,27 +40,23 @@ public class GetAWSGatewayApiTest {
          runner = TestRunners.newTestRunner(mockGetApi);
         runner.setValidateExpressionUsage(false);
 
-    }
-
-    @Test
-    public void testGetApiSimple() throws Exception {
-
         final AWSCredentialsProviderControllerService serviceImpl = new AWSCredentialsProviderControllerService();
         runner.addControllerService("awsCredentialsProvider", serviceImpl);
         runner.setProperty(serviceImpl, AbstractAWSProcessor.ACCESS_KEY, "awsAccessKey");
         runner.setProperty(serviceImpl, AbstractAWSProcessor.SECRET_KEY, "awsSecretKey");
         runner.enableControllerService(serviceImpl);
 
-        // set the properties
         runner.setProperty(AbstractAWSCredentialsProviderProcessor.AWS_CREDENTIALS_PROVIDER_SERVICE,
                            "awsCredentialsProvider");
         runner.setProperty(AbstractAWSGatewayApiProcessor.AWS_GATEWAY_API_REGION,"us-east-1");
-        runner.setProperty(AbstractAWSGatewayApiProcessor.RESOURCE_NAME,"/TEST");
         runner.setProperty(AbstractAWSGatewayApiProcessor.AWS_API_KEY,"abcd");
+        runner.setProperty(AbstractAWSGatewayApiProcessor.RESOURCE_NAME,"/TEST");
         runner.setProperty(AbstractAWSGatewayApiProcessor.AWS_GATEWAY_API_ENDPOINT,
                            "https://foobar.execute-api.us-east-1.amazonaws.com");
+    }
 
-
+    @Test
+    public void testGetApiSimple() throws Exception {
 
         HttpResponse resp = new BasicHttpResponse(new BasicStatusLine(HttpVersion.HTTP_1_1, 200, "OK"));
         BasicHttpEntity entity = new BasicHttpEntity();
@@ -66,18 +64,58 @@ public class GetAWSGatewayApiTest {
         resp.setEntity(entity);
         Mockito.doReturn(resp).when(mockSdkClient).execute(any(HttpUriRequest.class), any(HttpContext.class));
 
-
-
-
         // execute
         runner.assertValid();
         runner.run(1);
 
         // check
+        Mockito.verify(mockSdkClient, times(1)).execute(argThat(new RequestMatcher<HttpUriRequest>(
+                                                            x -> {
+                                                                return x.getMethod().equals("GET")
+                                                                    && x.getFirstHeader("x-api-key").getValue().equals("abcd")
+                                                                    && x.getFirstHeader("Authorization").getValue().startsWith("AWS4")
+                                                                    && x.getURI().toString().equals("https://foobar.execute-api.us-east-1.amazonaws.com/TEST");})),
+                                                        any(HttpContext.class));
+
         runner.assertAllFlowFilesTransferred(GetAWSGatewayApi.REL_SUCCESS,1);
         final List<MockFlowFile> flowFiles = runner.getFlowFilesForRelationship(GetAWSGatewayApi.REL_SUCCESS);
         final MockFlowFile ff0 = flowFiles.get(0);
         ff0.assertAttributeEquals(AbstractAWSGatewayApiProcessor.STATUS_CODE, "200");
+        ff0.assertContentEquals("test payload");
+        ff0.assertAttributeExists(AbstractAWSGatewayApiProcessor.TRANSACTION_ID);
+        ff0.assertAttributeEquals(AbstractAWSGatewayApiProcessor.RESOURCE_NAME_ATTR,"/TEST");
+    }
 
+    @Test
+    public void testGetApiSimpleWithDynamic() throws Exception {
+
+        HttpResponse resp = new BasicHttpResponse(new BasicStatusLine(HttpVersion.HTTP_1_1, 200, "OK"));
+        BasicHttpEntity entity = new BasicHttpEntity();
+        entity.setContent(new ByteArrayInputStream("test payload".getBytes()));
+        resp.setEntity(entity);
+        Mockito.doReturn(resp).when(mockSdkClient).execute(any(HttpUriRequest.class), any(HttpContext.class));
+
+        // add dynamic property
+        runner.setProperty("dynamicHeader","yes!");
+        // execute
+        runner.assertValid();
+        runner.run(1);
+
+        Mockito.verify(mockSdkClient, times(1)).execute(argThat(new RequestMatcher<HttpUriRequest>(
+                                                            x -> {
+                                                                return x.getMethod().equals("GET")
+                                                                && x.getFirstHeader("x-api-key").getValue().equals("abcd")
+                                                                && x.getFirstHeader("Authorization").getValue().startsWith("AWS4")
+                                                                && x.getFirstHeader("dynamicHeader").getValue().equals("yes!")
+                                                                && x.getURI().toString().equals("https://foobar.execute-api.us-east-1.amazonaws.com/TEST");})),
+                                                        any(HttpContext.class));
+        // check
+        runner.assertAllFlowFilesTransferred(GetAWSGatewayApi.REL_SUCCESS,1);
+        final List<MockFlowFile> flowFiles = runner.getFlowFilesForRelationship(GetAWSGatewayApi.REL_SUCCESS);
+        final MockFlowFile ff0 = flowFiles.get(0);
+        ff0.assertAttributeEquals(AbstractAWSGatewayApiProcessor.STATUS_CODE, "200");
+        ff0.assertContentEquals("test payload");
+        ff0.assertAttributeExists(AbstractAWSGatewayApiProcessor.TRANSACTION_ID);
+        ff0.assertAttributeEquals(AbstractAWSGatewayApiProcessor.RESOURCE_NAME_ATTR,"/TEST");
     }
 }
