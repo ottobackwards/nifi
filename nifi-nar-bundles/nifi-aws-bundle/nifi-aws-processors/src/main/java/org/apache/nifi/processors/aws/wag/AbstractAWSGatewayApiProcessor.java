@@ -26,6 +26,7 @@ import com.amazonaws.http.AmazonHttpClient;
 import com.amazonaws.regions.Region;
 import com.amazonaws.regions.Regions;
 import java.net.URL;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
@@ -38,6 +39,8 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.nifi.components.PropertyDescriptor;
+import org.apache.nifi.components.ValidationContext;
+import org.apache.nifi.components.ValidationResult;
 import org.apache.nifi.expression.AttributeExpression;
 import org.apache.nifi.flowfile.FlowFile;
 import org.apache.nifi.logging.ComponentLog;
@@ -149,6 +152,23 @@ public abstract class AbstractAWSGatewayApiProcessor extends AbstractAWSCredenti
         .allowableValues("true", "false")
         .build();
 
+    public static final PropertyDescriptor PROP_PROXY_USER = new PropertyDescriptor.Builder()
+        .name("invokehttp-proxy-user")
+        .displayName("Proxy Username")
+        .description("Username to set when authenticating against proxy")
+        .required(false)
+        .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
+        .build();
+
+    public static final PropertyDescriptor PROP_PROXY_PASSWORD = new PropertyDescriptor.Builder()
+        .name("invokehttp-proxy-password")
+        .displayName("Proxy Password")
+        .description("Password to set when authenticating against proxy")
+        .required(false)
+        .sensitive(true)
+        .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
+        .build();
+
     @Override
     protected PropertyDescriptor getSupportedDynamicPropertyDescriptor(String propertyDescriptorName) {
         return new PropertyDescriptor.Builder()
@@ -186,7 +206,39 @@ public abstract class AbstractAWSGatewayApiProcessor extends AbstractAWSCredenti
     }
 
     @Override
+    protected Collection<ValidationResult> customValidate(final ValidationContext validationContext) {
+        final List<ValidationResult> results = new ArrayList<>(3);
+        final boolean proxyHostSet = validationContext.getProperty(PROXY_HOST).isSet();
+        final boolean proxyPortSet = validationContext.getProperty(PROXY_HOST_PORT).isSet();
+
+        if ((proxyHostSet && !proxyPortSet) || (!proxyHostSet && proxyPortSet)) {
+            results.add(new ValidationResult.Builder().subject("Proxy Host and Port").valid(false).explanation("If Proxy Host or Proxy Port is set, both must be set").build());
+        }
+
+        final boolean proxyUserSet = validationContext.getProperty(PROP_PROXY_USER).isSet();
+        final boolean proxyPwdSet = validationContext.getProperty(PROP_PROXY_PASSWORD).isSet();
+
+        if ((proxyUserSet && !proxyPwdSet) || (!proxyUserSet && proxyPwdSet)) {
+            results.add(new ValidationResult.Builder().subject("Proxy User and Password").valid(false).explanation("If Proxy Username or Proxy Password is set, both must be set").build());
+        }
+        if(proxyUserSet && !proxyHostSet) {
+            results.add(new ValidationResult.Builder().subject("Proxy").valid(false).explanation("If Proxy username is set, proxy host must be set").build());
+        }
+
+        return results;
+    }
+
+    @Override
     protected GenericApiGatewayClient createClient(ProcessContext context, AWSCredentialsProvider awsCredentialsProvider, ClientConfiguration clientConfiguration) {
+
+        // although the base builds the configuration with support for host and port,
+        // check for name and password
+        if (context.getProperty(PROP_PROXY_USER).isSet()) {
+            String proxyUser = context.getProperty(PROP_PROXY_USER).evaluateAttributeExpressions().getValue();
+            clientConfiguration.setProxyUsername(proxyUser);
+            String proxyPassword = context.getProperty(PROP_PROXY_PASSWORD).evaluateAttributeExpressions().getValue();
+            clientConfiguration.setProxyPassword(proxyPassword);
+        }
 
         GenericApiGatewayClientBuilder builder =  new GenericApiGatewayClientBuilder()
                 .withCredentials(awsCredentialsProvider)

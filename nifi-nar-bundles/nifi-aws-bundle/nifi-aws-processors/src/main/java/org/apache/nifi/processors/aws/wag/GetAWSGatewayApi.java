@@ -54,8 +54,11 @@ import org.apache.nifi.processors.aws.wag.client.GenericApiGatewayResponse;
 public class GetAWSGatewayApi extends AbstractAWSGatewayApiProcessor {
 
     public static final List<PropertyDescriptor> properties = Collections.unmodifiableList(
-            Arrays.asList(AWS_GATEWAY_API_REGION, ACCESS_KEY, SECRET_KEY, CREDENTIALS_FILE, AWS_CREDENTIALS_PROVIDER_SERVICE, TIMEOUT,
-                    RESOURCE_NAME,AWS_GATEWAY_API_ENDPOINT, AWS_API_KEY, PROP_ATTRIBUTES_TO_SEND, PROP_OUTPUT_RESPONSE_REGARDLESS, PROP_PENALIZE_NO_RETRY));
+            Arrays.asList(AWS_GATEWAY_API_REGION, ACCESS_KEY, SECRET_KEY, CREDENTIALS_FILE,
+                          AWS_CREDENTIALS_PROVIDER_SERVICE, TIMEOUT, RESOURCE_NAME,
+                          AWS_GATEWAY_API_ENDPOINT, AWS_API_KEY, PROP_ATTRIBUTES_TO_SEND,
+                          PROP_OUTPUT_RESPONSE_REGARDLESS, PROP_PENALIZE_NO_RETRY,
+                          PROXY_HOST,PROXY_HOST_PORT,PROP_PROXY_USER,PROP_PROXY_PASSWORD));
 
 
     public static final Relationship REL_SUCCESS_REQ = new Relationship.Builder()
