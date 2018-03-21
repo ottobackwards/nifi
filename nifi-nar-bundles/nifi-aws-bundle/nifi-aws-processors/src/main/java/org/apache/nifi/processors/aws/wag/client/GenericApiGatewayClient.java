@@ -22,6 +22,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import java.io.InputStream;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 // The classes in this package come from: https://github.com/rpgreen/apigateway-generic-java-sdk
@@ -67,10 +68,10 @@ public class GenericApiGatewayClient extends AmazonWebServiceClient {
     }
 
     public GenericApiGatewayResponse execute(GenericApiGatewayRequest request) {
-        return execute(request.getHttpMethod(), request.getResourcePath(), request.getHeaders(), request.getBody());
+        return execute(request.getHttpMethod(), request.getResourcePath(), request.getHeaders(), request.getParameters(), request.getBody());
     }
 
-    private GenericApiGatewayResponse execute(HttpMethodName method, String resourcePath, Map<String, String> headers, InputStream content) {
+    private GenericApiGatewayResponse execute(HttpMethodName method, String resourcePath, Map<String, String> headers, Map<String,List<String>> parameters, InputStream content) {
         final ExecutionContext executionContext = buildExecutionContext();
 
         DefaultRequest request = new DefaultRequest(API_GATEWAY_SERVICE_NAME);
@@ -79,7 +80,7 @@ public class GenericApiGatewayClient extends AmazonWebServiceClient {
         request.setEndpoint(this.endpoint);
         request.setResourcePath(resourcePath);
         request.setHeaders(buildRequestHeaders(headers, apiKey));
-
+        request.setParameters(parameters);
         return this.client.execute(request, responseHandler, errorResponseHandler, executionContext).getAwsResponse();
     }
 

@@ -125,7 +125,7 @@ public class GetAWSGatewayApi extends AbstractAWSGatewayApiProcessor {
             final GenericApiGatewayClient client = getClient();
 
             final GenericApiGatewayRequestBuilder builder = setHeaderProperties(context, new GenericApiGatewayRequestBuilder()
-                .withResourcePath(resourceName).withHttpMethod(HttpMethodName.GET), requestFlowFile);
+                .withResourcePath(resourceName).withHttpMethod(HttpMethodName.GET).withParameters(getParameters(context)), requestFlowFile);
             final long startNanos = System.nanoTime();
             final GenericApiGatewayResponse response = client.execute(builder.build());
 

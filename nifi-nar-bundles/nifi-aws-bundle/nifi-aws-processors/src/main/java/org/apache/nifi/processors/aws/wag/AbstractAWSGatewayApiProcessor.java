@@ -25,7 +25,10 @@ import com.amazonaws.auth.AWSStaticCredentialsProvider;
 import com.amazonaws.http.AmazonHttpClient;
 import com.amazonaws.regions.Region;
 import com.amazonaws.regions.Regions;
+import java.net.URI;
 import java.net.URL;
+import java.net.URLEncoder;
+import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -37,10 +40,14 @@ import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.apache.commons.io.Charsets;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.http.NameValuePair;
+import org.apache.http.client.utils.URLEncodedUtils;
 import org.apache.nifi.components.PropertyDescriptor;
 import org.apache.nifi.components.ValidationContext;
 import org.apache.nifi.components.ValidationResult;
+import org.apache.nifi.components.Validator;
 import org.apache.nifi.expression.AttributeExpression;
 import org.apache.nifi.flowfile.FlowFile;
 import org.apache.nifi.logging.ComponentLog;
@@ -86,6 +93,7 @@ public abstract class AbstractAWSGatewayApiProcessor extends AbstractAWSCredenti
     }
 
 
+
     // Set of flowfile attributes which we generally always ignore during
     // processing, including when converting http headers, copying attributes, etc.
     // This set includes our strings defined above as well as some standard flowfile
@@ -122,6 +130,14 @@ public abstract class AbstractAWSGatewayApiProcessor extends AbstractAWSCredenti
         .description("The Name of the Gateway API Resource")
         .required(true)
         .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
+        .build();
+
+    public static final PropertyDescriptor PROP_QUERY_PARAMS = new PropertyDescriptor.Builder()
+        .name("Query Parameters")
+        .description("The query parameters for this request in the form of Name=Value separated by &")
+        .required(false)
+        .expressionLanguageSupported(true)
+        .addValidator(StandardValidators.createAttributeExpressionLanguageValidator(AttributeExpression.ResultType.STRING))
         .build();
 
     public static final PropertyDescriptor PROP_ATTRIBUTES_TO_SEND = new PropertyDescriptor.Builder()
@@ -210,6 +226,7 @@ public abstract class AbstractAWSGatewayApiProcessor extends AbstractAWSCredenti
         final List<ValidationResult> results = new ArrayList<>(3);
         final boolean proxyHostSet = validationContext.getProperty(PROXY_HOST).isSet();
         final boolean proxyPortSet = validationContext.getProperty(PROXY_HOST_PORT).isSet();
+        final boolean querySet = validationContext.getProperty(PROP_QUERY_PARAMS).isSet();
 
         if ((proxyHostSet && !proxyPortSet) || (!proxyHostSet && proxyPortSet)) {
             results.add(new ValidationResult.Builder().subject("Proxy Host and Port").valid(false).explanation("If Proxy Host or Proxy Port is set, both must be set").build());
@@ -225,6 +242,25 @@ public abstract class AbstractAWSGatewayApiProcessor extends AbstractAWSCredenti
             results.add(new ValidationResult.Builder().subject("Proxy").valid(false).explanation("If Proxy username is set, proxy host must be set").build());
         }
 
+        if(querySet) {
+            String input = validationContext.getProperty(PROP_QUERY_PARAMS).getValue();
+            // if we have expressions, we don't do further validation
+            if (!(validationContext.isExpressionLanguageSupported(PROP_QUERY_PARAMS.getName()) && validationContext.isExpressionLanguagePresent(input))) {
+                try {
+                    final String evaluatedInput = validationContext.newPropertyValue(input).evaluateAttributeExpressions().getValue();
+                    // user is not expected to encode, that will be done by the aws client
+                    // but we may need to when validating
+                    final String encodedInput = URLEncoder.encode(evaluatedInput, "UTF-8");
+                    final String url = String.format("http://www.foo.com?%s",encodedInput);
+                    new URL(url);
+                    results.add(new ValidationResult.Builder().subject(PROP_QUERY_PARAMS.getName()).input(input).explanation("Valid URL params").valid(true)
+                                                         .build());
+                } catch (final Exception e) {
+                    results.add(new ValidationResult.Builder().subject(PROP_QUERY_PARAMS.getName()).input(input).explanation("Not a valid set of URL params")
+                                                         .valid(false).build());
+                }
+            }
+        }
         return results;
     }
 
@@ -297,6 +333,34 @@ public abstract class AbstractAWSGatewayApiProcessor extends AbstractAWSCredenti
         }
 
         return requestBuilder;
+    }
+
+    /**
+     * Returns a map of Query Parameter Name to Values
+     * @param context ProcessContext
+     * @return Map of names and values
+     */
+    protected Map<String,List<String>> getParameters(ProcessContext context) {
+
+        if(!context.getProperty(PROP_QUERY_PARAMS).isSet()) {
+            return Collections.emptyMap();
+        }
+        final String queryString = context.getProperty(PROP_QUERY_PARAMS).evaluateAttributeExpressions().getValue();
+        List<NameValuePair> params = URLEncodedUtils.parse(queryString, Charsets.toCharset("UTF-8"));
+
+        if(params.isEmpty()) {
+            return Collections.emptyMap();
+        }
+
+        Map<String,List<String>> map = new HashMap<>();
+
+        for (NameValuePair nvp : params) {
+            if(!map.containsKey(nvp.getName())) {
+              map.put(nvp.getName(),new ArrayList<>());
+            }
+            map.get(nvp.getName()).add(nvp.getValue());
+        }
+        return map;
     }
 
     /**

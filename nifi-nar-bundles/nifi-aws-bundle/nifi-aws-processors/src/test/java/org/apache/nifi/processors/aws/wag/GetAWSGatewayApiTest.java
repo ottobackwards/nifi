@@ -142,4 +142,54 @@ public class GetAWSGatewayApiTest {
         ff0.assertAttributeExists(AbstractAWSGatewayApiProcessor.TRANSACTION_ID);
         ff0.assertAttributeEquals(AbstractAWSGatewayApiProcessor.RESOURCE_NAME_ATTR,"/TEST");
     }
+
+    @Test
+    public void testSendQueryParams() throws Exception {
+
+        HttpResponse resp = new BasicHttpResponse(new BasicStatusLine(HttpVersion.HTTP_1_1, 200, "OK"));
+        BasicHttpEntity entity = new BasicHttpEntity();
+        entity.setContent(new ByteArrayInputStream("test payload".getBytes()));
+        resp.setEntity(entity);
+        Mockito.doReturn(resp).when(mockSdkClient).execute(any(HttpUriRequest.class), any(HttpContext.class));
+
+        // add dynamic property
+        runner.setProperty("dynamicHeader","yes!");
+        runner.setProperty(GetAWSGatewayApi.PROP_QUERY_PARAMS,"apples=oranges&dogs=cats");
+
+        // set the regex
+        runner.setProperty(AbstractAWSGatewayApiProcessor.PROP_ATTRIBUTES_TO_SEND, "F.*");
+
+        final Map<String, String> attributes = new HashMap<>();
+        attributes.put(CoreAttributes.MIME_TYPE.key(), "application/plain-text");
+        attributes.put("Foo", "Bar");
+        runner.enqueue("Hello".getBytes("UTF-8"), attributes);
+        // execute
+        runner.assertValid();
+        runner.run(1);
+
+        Mockito.verify(mockSdkClient, times(1)).execute(argThat(new RequestMatcher<HttpUriRequest>(
+                                                            x -> {
+                                                                return x.getMethod().equals("GET")
+                                                                    && x.getFirstHeader("x-api-key").getValue().equals("abcd")
+                                                                    && x.getFirstHeader("Authorization").getValue().startsWith("AWS4")
+                                                                    && x.getFirstHeader("dynamicHeader").getValue().equals("yes!")
+                                                                    && x.getFirstHeader("Foo").getValue().equals("Bar")
+                                                                    && x.getURI().toString().equals("https://foobar.execute-api.us-east-1.amazonaws.com/TEST?dogs=cats&apples=oranges");})),
+                                                        any(HttpContext.class));
+        // check
+        runner.assertTransferCount(GetAWSGatewayApi.REL_SUCCESS_REQ, 1);
+        runner.assertTransferCount(GetAWSGatewayApi.REL_RESPONSE, 1);
+        runner.assertTransferCount(GetAWSGatewayApi.REL_RETRY, 0);
+        runner.assertTransferCount(GetAWSGatewayApi.REL_NO_RETRY, 0);
+        runner.assertTransferCount(GetAWSGatewayApi.REL_FAILURE, 0);
+
+        final List<MockFlowFile> flowFiles = runner.getFlowFilesForRelationship(GetAWSGatewayApi.REL_RESPONSE);
+        final MockFlowFile ff0 = flowFiles.get(0);
+
+        ff0.assertAttributeEquals(AbstractAWSGatewayApiProcessor.STATUS_CODE, "200");
+        ff0.assertContentEquals("test payload");
+        ff0.assertAttributeExists(AbstractAWSGatewayApiProcessor.TRANSACTION_ID);
+        ff0.assertAttributeEquals(AbstractAWSGatewayApiProcessor.RESOURCE_NAME_ATTR,"/TEST");
+    }
+
 }
