@@ -58,7 +58,7 @@ public class GetAWSGatewayApi extends AbstractAWSGatewayApiProcessor {
                           AWS_CREDENTIALS_PROVIDER_SERVICE, TIMEOUT, RESOURCE_NAME,
                           AWS_GATEWAY_API_ENDPOINT, AWS_API_KEY, PROP_ATTRIBUTES_TO_SEND,
                           PROP_OUTPUT_RESPONSE_REGARDLESS, PROP_PENALIZE_NO_RETRY,
-                          PROXY_HOST,PROXY_HOST_PORT,PROP_PROXY_USER,PROP_PROXY_PASSWORD));
+                          PROXY_HOST,PROXY_HOST_PORT,PROP_PROXY_USER,PROP_PROXY_PASSWORD, PROP_QUERY_PARAMS));
 
 
     public static final Relationship REL_SUCCESS_REQ = new Relationship.Builder()
