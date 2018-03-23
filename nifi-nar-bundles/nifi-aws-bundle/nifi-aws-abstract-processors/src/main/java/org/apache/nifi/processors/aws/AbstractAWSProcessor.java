@@ -129,11 +129,11 @@ public abstract class AbstractAWSProcessor<ClientType extends AmazonWebServiceCl
     protected static final Protocol DEFAULT_PROTOCOL = Protocol.HTTPS;
     protected static final String DEFAULT_USER_AGENT = "NiFi";
 
-    private static AllowableValue createAllowableValue(final Regions regions) {
+    protected static AllowableValue createAllowableValue(final Regions regions) {
         return new AllowableValue(regions.getName(), regions.getName(), regions.getName());
     }
 
-    private static AllowableValue[] getAvailableRegions() {
+    protected static AllowableValue[] getAvailableRegions() {
         final List<AllowableValue> values = new ArrayList<>();
         for (final Regions regions : Regions.values()) {
             values.add(createAllowableValue(regions));
