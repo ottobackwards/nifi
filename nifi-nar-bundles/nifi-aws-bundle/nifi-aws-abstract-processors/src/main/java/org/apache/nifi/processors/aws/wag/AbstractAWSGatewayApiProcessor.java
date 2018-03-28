@@ -412,7 +412,7 @@ public abstract class AbstractAWSGatewayApiProcessor extends
                                                final ProcessContext context,
                                                final FlowFile requestFlowFile) {
 
-        if (context.getProperty(PROP_SEND_BODY).asBoolean()) {
+        if (context.getProperty(PROP_SEND_BODY).asBoolean() && requestFlowFile != null) {
             ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
             session.exportTo(requestFlowFile, outputStream);
             return new ByteArrayInputStream(outputStream.toByteArray());
