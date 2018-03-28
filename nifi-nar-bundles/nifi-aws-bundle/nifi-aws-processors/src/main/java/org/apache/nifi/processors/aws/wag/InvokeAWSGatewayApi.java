@@ -31,6 +31,7 @@ import org.apache.http.impl.EnglishReasonPhraseCatalog;
 import org.apache.nifi.annotation.behavior.DynamicProperty;
 import org.apache.nifi.annotation.behavior.InputRequirement;
 import org.apache.nifi.annotation.behavior.InputRequirement.Requirement;
+import org.apache.nifi.annotation.behavior.SupportsBatching;
 import org.apache.nifi.annotation.behavior.TriggerWhenEmpty;
 import org.apache.nifi.annotation.behavior.WritesAttribute;
 import org.apache.nifi.annotation.behavior.WritesAttributes;
@@ -51,8 +52,9 @@ import org.apache.nifi.processors.aws.wag.client.GenericApiGatewayResponse;
 import org.apache.nifi.stream.io.StreamUtils;
 
 @TriggerWhenEmpty
+@SupportsBatching
 @InputRequirement(Requirement.INPUT_ALLOWED)
-@Tags({"Amazon", "AWS", "Client", "Gateway-API"})
+@Tags({"Amazon", "AWS", "Client", "Gateway-API", "Rest", "http", "https"})
 @CapabilityDescription("Client for AWS Gateway API endpoint")
 @WritesAttributes({
     @WritesAttribute(attribute = "mime.type", description = "The MIME Type of the flowfiles"),
