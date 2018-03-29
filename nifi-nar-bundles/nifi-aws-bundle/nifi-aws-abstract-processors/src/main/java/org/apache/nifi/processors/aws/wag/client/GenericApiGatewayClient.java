@@ -92,7 +92,9 @@ public class GenericApiGatewayClient extends AmazonWebServiceClient {
         request.setEndpoint(this.endpoint);
         request.setResourcePath(resourcePath);
         request.setHeaders(buildRequestHeaders(headers, apiKey));
-        request.setParameters(parameters);
+        if (parameters != null) {
+            request.setParameters(parameters);
+        }
         return this.client.execute(request, responseHandler, errorResponseHandler, executionContext).getAwsResponse();
     }
 
