@@ -873,8 +873,9 @@ public final class StandardProcessGroup implements ProcessGroup {
             processors.remove(id);
             onComponentModified();
 
+            scheduler.onProcessorRemoved(processor);
             flowController.onProcessorRemoved(processor);
-            LogRepositoryFactory.getRepository(processor.getIdentifier()).removeAllObservers();
+            LogRepositoryFactory.removeRepository(processor.getIdentifier());
 
             final StateManagerProvider stateManagerProvider = flowController.getStateManagerProvider();
             scheduler.submitFrameworkTask(new Runnable() {

@@ -3551,6 +3551,7 @@ public class FlowController implements EventAccess, ControllerServiceProvider, R
         }
 
         reportingTasks.remove(reportingTaskNode.getIdentifier());
+        LogRepositoryFactory.removeRepository(reportingTaskNode.getIdentifier());
         ExtensionManager.removeInstanceClassLoader(reportingTaskNode.getIdentifier());
     }
 
