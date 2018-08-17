@@ -79,6 +79,29 @@ public class TestReplaceText {
         out.assertContentEquals("{\"NAME\":\"Smith\",\"MIDDLE\":\"nifi\",\"FIRSTNAME\":\"John\"}");
     }
 
+    /**
+     * Test possible regression, where escapes where required for expression language statements
+     * in REPLACEMENT_VALUE
+     *
+     * NIFI-5529
+     */
+    @Test
+    public void testEscapesNotRequiredWithRegexReplace() {
+        final TestRunner runner = getRunner();
+        runner.setProperty(ReplaceText.EVALUATION_MODE, ReplaceText.LINE_BY_LINE);
+        runner.setProperty(ReplaceText.SEARCH_VALUE, "(.*?)");
+        runner.setProperty(ReplaceText.REPLACEMENT_VALUE, "${csvRow:replaceAll(',','\\n')}");
+        runner.setProperty(ReplaceText.REPLACEMENT_STRATEGY,ReplaceText.ALWAYS_REPLACE);
+        Map<String,String> attrs = new HashMap<>();
+        attrs.put("csvRow","foo,bar,baz");
+        runner.enqueue("test".getBytes(),attrs);
+        runner.run();
+
+        runner.assertAllFlowFilesTransferred(ReplaceText.REL_SUCCESS, 1);
+        final MockFlowFile out = runner.getFlowFilesForRelationship(ReplaceText.REL_SUCCESS).get(0);
+        out.assertContentEquals( "foo\nbar\nbaz");
+    }
+
     @Test
     public void testIterativeRegexReplaceLineByLine() {
         final TestRunner runner = getRunner();
